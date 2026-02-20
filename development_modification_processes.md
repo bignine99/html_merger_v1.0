@@ -1,7 +1,7 @@
 # Lecture Forge - 개발 과정 및 기술 문서
 
-> **최종 수정일**: 2026-02-20  
-> **현재 버전**: v2.0 (HTML Merger Only)  
+> **최종 수정일**: 2026-02-20 (v2.1 - Blob URL 차트 렌더링 수정)  
+> **현재 버전**: v2.1 (HTML Merger + Chart Fix)  
 > **배포**: Vercel  
 > **GitHub**: https://github.com/bignine99/html_merger_v1.0.git
 
@@ -164,14 +164,15 @@ HTML에서 페이지 제목을 추출하는 우선순위:
 │   ├── <iframe id="pageFrame"> ← 현재 페이지 표시
 │   └── <script>
 │       ├── var _pages = [...] ← 모든 페이지의 safeContent 배열
-│       ├── loadPage(idx) ← iframe에 document.write()로 페이지 로드
+│       ├── loadPage(idx) ← Blob URL 방식으로 iframe 페이지 로드
 │       ├── goPage(idx), prevPage(), nextPage()
 │       ├── toggleNav() ← 네비게이션 바 접기/펼치기
 │       └── 키보드 이벤트 (←→ 화살표 키로 페이지 이동)
 ```
 
-**CSS 격리 방식**: `iframe` + `document.write()`  
+**CSS 격리 방식**: `iframe` + `Blob URL`  
 - 각 페이지의 CSS가 다른 페이지에 영향을 주지 않음
+- 외부 CDN 스크립트(Chart.js 등)도 정상적으로 로드됨
 - `file:///` 프로토콜에서도 작동 (CORS 이슈 없음)
 
 ---
@@ -243,6 +244,67 @@ HTML에서 페이지 제목을 추출하는 우선순위:
 - 원인: `tsconfig.json`에 `target`이 없어 TypeScript 기본값(ES3/ES5) 적용
 - 해결: `tsconfig.json`에 `"target": "es2018"` 추가
 
+### 6.6 Phase 5: 차트 렌더링 버그 수정 (v2.1 - 2026-02-20)
+
+#### 문제 현상
+원본 HTML 파일에 포함된 **Chart.js 차트**가 병합 후 사라지는 현상 발생.  
+원본 파일을 단독으로 열면 차트가 정상 표시되지만, 병합된 결과물에서는 빈 캔버스만 나옴.
+
+#### 근본 원인 분석
+원본 HTML 파일들은 다음 구조를 가짐:
+```html
+<!-- head에서 CDN으로 Chart.js 로드 -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- body 하단에서 DOMContentLoaded 이벤트로 차트 초기화 -->
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+    new Chart(document.getElementById("myChart"), { ... });
+});
+</script>
+```
+
+기존 `document.write()` 방식의 문제:
+```javascript
+// ❌ 기존 방식
+doc.open();
+doc.write(_pages[idx]);  // HTML 파싱 시작
+doc.close();             // → DOMContentLoaded 즉시 발생!
+// 하지만 Chart.js CDN은 아직 다운로드 중...
+// → Chart 객체가 undefined → 차트 생성 실패 → 빈 캔버스
+```
+
+`doc.close()` 호출 시 브라우저는 문서 로딩이 완료된 것으로 간주하여  
+`DOMContentLoaded` 이벤트를 발생시키지만, `<script src="...">` 태그로  
+참조된 외부 스크립트의 다운로드/실행은 아직 완료되지 않은 상태.  
+결과적으로 `Chart` 전역 객체가 `undefined`인 상태에서 차트 초기화 코드가 실행됨.
+
+#### 해결: Blob URL 방식으로 전환
+```javascript
+// ✅ 수정된 방식 (Blob URL)
+function loadPage(idx) {
+    var frame = document.getElementById('pageFrame');
+    var blob = new Blob([_pages[idx]], { type: 'text/html;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    if (frame._blobUrl) URL.revokeObjectURL(frame._blobUrl);
+    frame._blobUrl = url;
+    frame.src = url;
+}
+```
+
+**Blob URL 방식의 장점:**
+- `iframe.src`에 Blob URL을 설정하면 브라우저가 **정상적인 페이지 로드 프로세스**를 수행
+- 외부 `<script src="...">` 태그가 파싱 시 정상적으로 다운로드/실행 완료됨
+- 이후 `DOMContentLoaded`가 올바른 시점에 발생하여 차트 초기화 정상 동작
+- `file:///` 프로토콜에서도 Blob URL은 정상 작동 (동일 출처 컨텍스트)
+- 이전 Blob URL을 `URL.revokeObjectURL()`로 해제하여 메모리 누수 방지
+
+#### 수정된 파일
+| 파일 | 위치 | 변경 내용 |
+|------|------|----------|
+| `src/lib/smart-merger.ts` | `loadPage()` 함수 | `document.write()` → `Blob URL` |
+| `merge.js` (루트) | `loadPage()` 함수 | `document.write()` → `Blob URL` |
+
 ---
 
 ## 7. 로컬 개발 환경 설정
@@ -293,6 +355,7 @@ git push origin main
 2. **`target: "es2018"`을 제거하지 마세요** — 정규식 `s` 플래그가 빌드에 실패합니다
 3. **iframe 방식을 변경할 때 주의** — CSS 격리가 깨지면 페이지 간 스타일 충돌 발생
 4. **`file:///` 프로토콜 호환성 유지** — 최종 출력물은 로컬에서도 사용되므로 외부 리소스 의존 최소화
+5. **`document.write()` 방식으로 되돌리지 마세요** — 외부 CDN 스크립트(Chart.js 등)가 정상 로드되지 않아 차트가 사라집니다. 반드시 `Blob URL` 방식 유지
 
 ### 8.3 과거 AI 기능 재도입 시 참고
 만약 향후 AI 기능을 다시 추가한다면:
@@ -310,6 +373,7 @@ git push origin main
 |------|------|------|
 | af94618 | 2026-02-20 | v2.0: HTML Merger 초기 커밋 (AI 기능 제거, 순수 병합 도구) |
 | 3afa7c2 | 2026-02-20 | fix: tsconfig target es2018 - Vercel 빌드 정규식 플래그 에러 수정 |
+| 808eb21 | 2026-02-20 | fix: Blob URL 방식으로 변경 - iframe 내 Chart.js 등 CDN 스크립트 정상 로드 |
 
 ---
 
