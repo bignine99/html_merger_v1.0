@@ -105,11 +105,15 @@ ${navButtons}
 
         function loadPage(idx) {
             var frame = document.getElementById('pageFrame');
-            var doc = frame.contentDocument || frame.contentWindow.document;
-            if (!doc) { setTimeout(() => loadPage(idx), 50); return; }
-            doc.open();
-            doc.write(_pages[idx]);
-            doc.close();
+            // Use Blob URL instead of document.write() to ensure external scripts
+            // (Chart.js CDN etc.) are fully loaded before DOMContentLoaded fires.
+            // document.write() + doc.close() fires DOMContentLoaded immediately,
+            // before CDN scripts finish downloading, causing charts to disappear.
+            var blob = new Blob([_pages[idx]], { type: 'text/html;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            if (frame._blobUrl) URL.revokeObjectURL(frame._blobUrl);
+            frame._blobUrl = url;
+            frame.src = url;
         }
         function goPage(idx) {
             if (idx < 0 || idx >= _totalPages) return;
