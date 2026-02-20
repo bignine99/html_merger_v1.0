@@ -1,67 +1,319 @@
-# 개발 수정 프로세스 (Development Modification Processes)
+# Lecture Forge - 개발 과정 및 기술 문서
 
-## 📅 오늘(2026-02-19)의 개발 목표
-1. **AI 연동**: 기존의 목업(Mock)으로 작동하던 AI 기능을 실제 API와 연결하여 작동시키기.
-2. **OpenAI 통합**: `openai` npm 패키지를 사용하여 GPT-4o 모델 활용.
-3. **에디터 UI 개선**: API Key 입력, 설정 UI, 채팅창 로직 구현.
-4. **상태 관리**: 파일 업로드 페이지(`file-dropzone`)와 에디터 페이지(`EditorPage`) 간 데이터 공유(`useLectureStore`).
-
----
-
-## 🛠️ 주요 수정 내역 (Changelog)
-
-### 1️⃣ OpenAI 연동 코드 구현 (OpenAI Integration)
-- `/api/chat/route.ts` 파일 생성:
-    - `POST` 요청을 받아 사용자의 메시지와 현재 HTML 컨텐츠를 OpenAI API로 전송.
-    - 시스템 프롬프트(System Prompt)를 작성하여 AI가 "교육 콘텐츠 디자이너" 역할을 수행하도록 지시.
-    - HTML 코드 블록(` ```html ... ``` `)을 감지하여 텍스트 응답과 실제 코드 변경을 구분.
-
-### 2️⃣ 에디터 페이지 기능 구현 (`EditorPage.tsx`)
-- `useLectureStore` 상태와 연동하여 병합된 페이지 데이터 로드.
-- `fetch('/api/chat')` 호출 로직 추가:
-    - 사용자가 입력한 API Key를 헤더에 포함하여 안전하게 전송.
-    - AI 응답(`data.html`)이 있는 경우 `setPages`를 통해 즉시 화면 갱신.
-- **설정 모달(Settings Modal)** 추가: API Key 입력 및 저장 UI 구현.
-- **채팅 UI** 개선: 로딩 상태 표시, 메시지 말풍선 스타일링, 자동 스크롤.
-
-### 3️⃣ Gemini 모델로 전환 (Pivot to Google Gemini)
-- **사용자 요청**: OpenAI 대신 **Google Gemini** 모델 사용 요청.
-- **API 수정**:
-    - `import OpenAI` → `import { GoogleGenerativeAI }`
-    - `openai.chat.completions.create` → `model.generateContent`
-    - 모델명 변경: `gpt-4o` → `gemini-pro`
-- **UI 수정**:
-    - "OpenAI API Key" 문구를 "Google Gemini API Key"로 변경.
-    - 설정 모달 내 플레이스홀더 변경 (`sk-...` → `AIzaSy...`).
+> **최종 수정일**: 2026-02-20  
+> **현재 버전**: v2.0 (HTML Merger Only)  
+> **배포**: Vercel  
+> **GitHub**: https://github.com/bignine99/html_merger_v1.0.git
 
 ---
 
-## ⚠️ 발생한 오류 및 해결 과정 (Troubleshooting)
+## 1. 프로젝트 개요
 
-### ❌ `Module not found: Can't resolve 'openai'`
-- **원인**: `npm install openai` 설치 명령어가 느린 네트워크 또는 프로세스 타임아웃으로 인해 정상적으로 완료되지 않음.
-- **대처**: 재설치 시도, `--save` 옵션 추가, 타임아웃 시간 연장. 하지만 설치가 지연되어 Gemini로 전환됨.
+### 1.1 목적
+여러 개의 HTML 강의 파일(.html)을 **하나의 단일 HTML 파일**로 병합하는 웹 도구.  
+병합된 결과물은 **CSS 충돌 없이** 각 페이지를 iframe으로 격리하며, **플로팅 네비게이션**으로 페이지 간 이동이 가능.
 
-### ❌ `Module not found: Can't resolve '@google/generative-ai'`
-- **원인**: Gemini 연동을 위해 필요한 패키지가 설치되지 않았거나 설치 중단됨.
-- **대처**: `npm install @google/generative-ai` 명령어 실행. 백그라운드 설치가 지연되어 사용자에게 수동 설치 안내함.
+### 1.2 핵심 기능
+| 기능 | 설명 |
+|------|------|
+| 파일 업로드 | 드래그 앤 드롭 또는 클릭으로 HTML/HTM 파일 다중 선택 |
+| 순서 변경 | 업로드된 파일의 병합 순서를 ▲▼ 버튼으로 조정 |
+| 스마트 병합 | CSS 격리(iframe), `</script>` 이스케이프, 제목 자동 추출 |
+| 인라인 미리보기 | 병합 결과를 페이지 내 iframe으로 즉시 확인 |
+| 다운로드 | `merged_lecture.html` 파일로 다운로드 |
+| 새 탭 미리보기 | 브라우저 새 탭에서 전체화면으로 확인 |
 
-### ❌ `Syntax Error: Unterminated regexp literal` (EditorPage.tsx)
-- **원인**: 코드 수정 과정에서 `page.tsx` 파일의 내용이 중간에 잘리거나 잘못된 문법으로 치환됨. (닫는 괄호 누락 등)
-- **해결**: `EditorPage.tsx` 파일 전체 내용을 올바른 코드로 다시 작성하여 덮어쓰기 완료.
-
-### ❌ `Fast Refresh had to perform a full reload`
-- **원인**: 런타임 오류 및 모듈 없음 오류가 반복되면서 Next.js 개발 서버가 강제로 전체 새로고침을 수행함.
-- **대처**: 오류 수정 후 개발 서버를 다른 포트(`3006`)로 재시작하여 캐시 문제 및 프로세스 충돌 방지.
+### 1.3 사용 시나리오
+1. 교수/강사가 각 챕터별로 제작한 HTML 강의 슬라이드를 하나로 합침
+2. 학생 배포용 단일 파일 생성 (네비게이션 포함)
+3. `file:///` 프로토콜에서도 작동 (로컬에서 바로 열기 가능)
 
 ---
 
-## ✅ 현재 상태 및 향후 계획 (Current Status & Next Steps)
-- **현재 상태**:
-    - 코드는 **Google Gemini** 연동 로직으로 완벽하게 수정됨.
-    - UI는 Gemini API Key 입력을 받도록 변경됨.
-    - 단, `node_modules` 폴더의 패키지 설치가 불안정할 수 있음.
-- **다음 접속 시 할 일**:
-    1. 터미널에서 `npm install`을 실행하여 모든 의존성 패키지를 확실하게 설치.
-    2. `npm run dev` 실행 후 `http://localhost:3000` 접속.
-    3. Gemini API Key를 입력하고 실제 AI 기능 테스트.
+## 2. 기술 스택
+
+### 2.1 프레임워크 & 라이브러리
+| 패키지 | 버전 | 용도 |
+|--------|------|------|
+| Next.js | 14.1.0 | React 프레임워크, SSR/SSG |
+| React | ^18 | UI 렌더링 |
+| TypeScript | ^5 | 타입 안전성 |
+| Tailwind CSS | ^3.3.0 | 유틸리티 CSS 스타일링 |
+| Zustand | ^4.5.1 | 전역 상태 관리 (현재는 pages만 저장) |
+| Lucide React | ^0.323.0 | 아이콘 컴포넌트 |
+| Framer Motion | ^11.0.3 | 애니메이션 (현재 미사용, 향후 확장 가능) |
+| Radix UI | ^1.0.2 | 접근성 기반 UI 프리미티브 (Button slot) |
+| CVA | ^0.7.0 | class-variance-authority, 컴포넌트 변형 관리 |
+
+### 2.2 빌드 & 배포
+| 항목 | 값 |
+|------|-----|
+| 빌드 도구 | Next.js (Webpack) |
+| TypeScript target | **es2018** (정규식 `s` 플래그 필수) |
+| 배포 플랫폼 | Vercel |
+| Node.js | 18+ 권장 |
+
+---
+
+## 3. 프로젝트 구조
+
+```
+lecture-forge-web/
+├── package.json                 # 의존성 및 스크립트
+├── tsconfig.json                # TypeScript 설정 (target: es2018)
+├── tailwind.config.ts           # Tailwind CSS 설정
+├── postcss.config.js            # PostCSS 설정
+├── .gitignore                   # Git 제외 목록
+├── development_modification_processes.md  # 이 문서
+├── program_instruction.md       # 프로그램 사용 설명서
+│
+└── src/
+    ├── app/
+    │   ├── layout.tsx           # 루트 레이아웃 (Inter 폰트, 메타데이터)
+    │   ├── page.tsx             # 메인 페이지 (Hero + FileDropzone)
+    │   └── globals.css          # 전역 CSS (Tailwind + 커스텀 테마)
+    │
+    ├── components/
+    │   ├── file-dropzone.tsx    # ⭐ 핵심 컴포넌트: 파일 업로드 및 병합 UI
+    │   └── ui/
+    │       ├── button.tsx       # Shadcn/ui Button (CVA 기반)
+    │       ├── card.tsx         # Shadcn/ui Card
+    │       └── input.tsx        # Shadcn/ui Input
+    │
+    └── lib/
+        ├── smart-merger.ts      # ⭐ 핵심 로직: HTML 병합 엔진
+        ├── store.ts             # Zustand 전역 상태 (pages)
+        └── utils.ts             # cn() 유틸리티 (tailwind-merge + clsx)
+```
+
+---
+
+## 4. 핵심 데이터 구조
+
+### 4.1 `MergedPage` (src/lib/smart-merger.ts)
+```typescript
+export interface MergedPage {
+    filename: string;     // 원본 파일명 (예: "chapter_01.html")
+    title: string;        // 추출된 제목 (예: "Software Architecture 101")
+    content: string;      // 원본 HTML 전체 텍스트
+    safeContent: string;  // JSON.stringify() + </script> 이스케이프 처리된 문자열
+}
+```
+
+### 4.2 `LecturePage` (src/lib/store.ts)
+```typescript
+export interface LecturePage {
+    filename: string;
+    title: string;
+    content: string;
+    safeContent: string;
+}
+
+// Zustand Store
+interface LectureStore {
+    pages: LecturePage[];
+    setPages: (pages: LecturePage[]) => void;
+}
+```
+
+> **참고**: `MergedPage`와 `LecturePage`는 동일한 구조. 향후 통합 가능.
+
+---
+
+## 5. 핵심 로직 상세
+
+### 5.1 제목 추출 (`extractTitle`)
+HTML에서 페이지 제목을 추출하는 우선순위:
+
+1. **`nn-header-title` 클래스를 가진 div** → HTML 태그 제거 후 텍스트 반환
+2. **`<title>` 태그** → "NINETYNINE - " 접두사 제거 후 반환
+3. **파일명 fallback** → 확장자 제거, 언더스코어를 공백으로 변환
+
+```
+정규식: /<div[^>]*class=["'][^"']*nn-header-title[^"']*["'][^>]*>(.*?)<\/div>/is
+```
+> ⚠️ `s` 플래그 (dotAll) 사용 → **tsconfig.json의 target이 es2018 이상**이어야 함
+
+### 5.2 스마트 병합 (`smartMergeFiles`)
+각 HTML 파일을 안전하게 JavaScript 변수에 저장할 수 있도록 처리:
+
+```
+원본 HTML → JSON.stringify() → </script> 이스케이프 → safeContent
+```
+
+**왜 `</script>` 이스케이프가 필요한가?**  
+병합된 HTML 파일에서 각 페이지의 내용을 `<script>` 블록 내 JavaScript 변수로 저장합니다.  
+만약 원본 HTML에 `</script>`가 포함되어 있으면, 브라우저 HTML 파서가 부모 `<script>` 태그를 닫아버려 전체가 깨집니다.  
+따라서 `</script>` → `<\/script>`로 이스케이프합니다.
+
+### 5.3 병합 HTML 생성 (`generateMergedHtml`)
+최종 출력은 **Single Page Application** 구조:
+
+```
+<!DOCTYPE html>
+├── <head>
+│   ├── Google Fonts (Inter, Noto Sans KR)
+│   └── <style> (네비게이션 바 CSS)
+├── <body>
+│   ├── <nav> 플로팅 네비게이션
+│   │   ├── ☰ 토글 버튼
+│   │   ├── << 이전 페이지
+│   │   ├── [1] [2] [3] ... 페이지 번호 버튼
+│   │   ├── >> 다음 페이지
+│   │   └── 페이지 인디케이터 (1/N)
+│   ├── <iframe id="pageFrame"> ← 현재 페이지 표시
+│   └── <script>
+│       ├── var _pages = [...] ← 모든 페이지의 safeContent 배열
+│       ├── loadPage(idx) ← iframe에 document.write()로 페이지 로드
+│       ├── goPage(idx), prevPage(), nextPage()
+│       ├── toggleNav() ← 네비게이션 바 접기/펼치기
+│       └── 키보드 이벤트 (←→ 화살표 키로 페이지 이동)
+```
+
+**CSS 격리 방식**: `iframe` + `document.write()`  
+- 각 페이지의 CSS가 다른 페이지에 영향을 주지 않음
+- `file:///` 프로토콜에서도 작동 (CORS 이슈 없음)
+
+---
+
+## 6. 개발 과정 & 시행착오
+
+### 6.1 Phase 1: 초기 Node.js 스크립트 (merge.js)
+- **방식**: Node.js 스크립트로 폴더 내 HTML 파일을 자동 탐지하여 병합
+- **문제**: 매번 터미널에서 실행해야 하는 불편함
+- **결과**: 기능은 작동하지만 비개발자에게 접근성이 낮음
+
+### 6.2 Phase 2: Next.js 웹 앱으로 전환
+- **결정**: 브라우저에서 드래그 앤 드롭으로 병합할 수 있는 웹 앱으로 전환
+- **기술 선택**: Next.js 14 + Tailwind CSS + Zustand
+- **성과**: 파일 업로드 → 병합 → 다운로드 기본 워크플로우 완성
+
+### 6.3 Phase 3: AI 편집 기능 추가 (v1.x) → 제거됨
+이 단계에서 Google Gemini API를 연동하여 AI 기반 강의 내용 수정 기능을 추가했습니다.
+
+#### 시도했던 AI 기능들:
+| 기능 | 설명 | 문제점 |
+|------|------|--------|
+| AI 채팅 에디터 | `/editor` 페이지에서 AI와 대화하며 슬라이드 수정 | 복잡한 프롬프트 엔지니어링 필요 |
+| 페이지별 수정 | "페이지 2 수정해줘" → 특정 페이지만 AI에 전송 | Stale closure 문제로 잘못된 페이지 전송 |
+| 일괄 수정 | "모든 페이지 수정해줘" → 전체 순차 처리 | API 요청 많아 비용/시간 과다 |
+| 수정 보고서 | AI가 수정 전후 변경 내역을 상세히 보고 | 보고서 품질 불안정 |
+
+#### 발생했던 주요 버그들:
+
+**Bug 1: Gemini 모델 404 오류**
+- 원인: `gemini-pro` 모델이 deprecated됨
+- 해결: `gemini-2.0-flash`로 변경
+
+**Bug 2: AI가 다른 페이지의 HTML을 받음 (Stale Closure)**
+- 원인: React 클로저 특성상 `pages` 변수가 이전 렌더링의 값을 참조
+- 해결: `useLectureStore.getState().pages`로 zustand 스토어에서 직접 최신 값 읽기
+
+**Bug 3: AI가 "페이지 2 코드를 보내주세요"라고 응답**
+- 원인: API에 페이지 번호/제목을 보내지 않아 AI가 어떤 페이지인지 모름
+- 해결: `pageNumber`, `pageTitle`, `totalPages`를 API에 함께 전송하고, 시스템 프롬프트에 "이 HTML이 해당 페이지입니다"라고 명시
+
+**Bug 4: AI가 내용을 삭제하는 방식으로 "수정"**
+- 원인: 시스템 프롬프트가 "보강 = 확장"이 아니라 "간소화"로 해석됨
+- 해결: 한국어 프롬프트로 전환, "절대 삭제 금지" 규칙 명시, 보강 작업의 4개 카테고리 상세 지침 추가
+
+**Bug 5: 수정 결과가 미리보기에 반영되지 않음**
+- 원인: 미리보기가 전체 병합 HTML을 보여주어, 수정된 페이지가 아닌 1페이지로 초기화됨
+- 해결: 개별 페이지 미리보기 모드 추가 (수정 중인 페이지만 표시)
+
+**Bug 6: 채팅창에 HTML 코드가 그대로 노출**
+- 원인: AI 응답에서 코드블록 파싱이 불완전함
+- 해결: `stripCodeFromMessage()` 함수로 코드블록 완전 제거
+
+#### AI 기능 제거 결정:
+- AI 응답 품질이 불안정 (내용 삭제, 불필요한 코드 노출 등)
+- 프롬프트 엔지니어링의 한계 (강의 내용 도메인 전문성 부족)
+- 도구의 핵심 목적은 **"병합"**이지 "AI 편집"이 아님
+- 복잡성 증가 대비 실용성이 낮음
+
+### 6.4 Phase 4: 순수 병합 도구로 정리 (v2.0 - 현재)
+- AI 관련 코드 전체 제거 (`/api/chat`, `/editor`, `@google/generative-ai`)
+- 메인 페이지에서 업로드 → 병합 → 미리보기 → 다운로드 원스톱 완성
+-  파일 순서 변경 기능 추가 (▲▼ 버튼)
+- Vercel 배포 준비
+
+### 6.5 Vercel 배포 시 발생한 에러
+**에러**: `This regular expression flag is only available when targeting 'es2018' or later.`
+- 위치: `src/lib/smart-merger.ts:15` (정규식 `/is` 플래그 중 `s`)
+- 원인: `tsconfig.json`에 `target`이 없어 TypeScript 기본값(ES3/ES5) 적용
+- 해결: `tsconfig.json`에 `"target": "es2018"` 추가
+
+---
+
+## 7. 로컬 개발 환경 설정
+
+### 7.1 최초 설치
+```bash
+cd lecture-forge-web
+npm install
+```
+
+### 7.2 개발 서버 실행
+```bash
+npm run dev
+# → http://localhost:3000 에서 접속
+```
+
+### 7.3 프로덕션 빌드
+```bash
+npm run build
+npm start
+```
+
+### 7.4 Git 커밋 & 푸시
+```bash
+git add -A
+git commit -m "설명"
+git push origin main
+# → Vercel에서 자동 배포 트리거
+```
+
+---
+
+## 8. 향후 개발 고려사항
+
+### 8.1 기능 확장 아이디어
+| 기능 | 난이도 | 설명 |
+|------|--------|------|
+| 폴더 업로드 | 중 | 폴더째 드래그 앤 드롭으로 내부 HTML 자동 탐지 |
+| 드래그 순서 변경 | 중 | 현재 ▲▼ 버튼 → 드래그 앤 드롭 방식으로 개선 |
+| 테마 선택 | 하 | 네비게이션 바 색상/스타일 커스터마이징 |
+| PDF 내보내기 | 상 | 병합 결과를 PDF로 변환 (Puppeteer 필요) |
+| 페이지별 미리보기 | 중 | 병합 전 각 페이지를 개별 미리보기 |
+| 제목 수동 편집 | 하 | 자동 추출된 제목을 사용자가 직접 수정 |
+| 네비게이션 위치 설정 | 하 | 하단/상단/좌측 등 위치 선택 |
+
+### 8.2 주의사항 (향후 개발 시)
+1. **`safeContent` 생성 로직을 변경하지 마세요** — `JSON.stringify` + `</script>` 이스케이프는 보안 및 안정성에 필수
+2. **`target: "es2018"`을 제거하지 마세요** — 정규식 `s` 플래그가 빌드에 실패합니다
+3. **iframe 방식을 변경할 때 주의** — CSS 격리가 깨지면 페이지 간 스타일 충돌 발생
+4. **`file:///` 프로토콜 호환성 유지** — 최종 출력물은 로컬에서도 사용되므로 외부 리소스 의존 최소화
+
+### 8.3 과거 AI 기능 재도입 시 참고
+만약 향후 AI 기능을 다시 추가한다면:
+- Gemini 모델은 `gemini-2.0-flash` 이상 사용 (이전 모델 deprecated)
+- 시스템 프롬프트를 **한국어**로 작성해야 응답 품질이 높음
+- `useLectureStore.getState()`로 항상 최신 상태를 읽어야 stale closure 문제 방지
+- 페이지 번호/제목을 API에 반드시 함께 전송
+- AI 응답에서 HTML 코드블록을 반드시 파싱하여 분리 (채팅에 코드 노출 방지)
+
+---
+
+## 9. 커밋 히스토리
+
+| 해시 | 날짜 | 설명 |
+|------|------|------|
+| af94618 | 2026-02-20 | v2.0: HTML Merger 초기 커밋 (AI 기능 제거, 순수 병합 도구) |
+| 3afa7c2 | 2026-02-20 | fix: tsconfig target es2018 - Vercel 빌드 정규식 플래그 에러 수정 |
+
+---
+
+## 10. 연락처 & 리소스
+
+- **GitHub**: https://github.com/bignine99/html_merger_v1.0
+- **배포**: Vercel (자동 배포, main 브랜치 push 시)
